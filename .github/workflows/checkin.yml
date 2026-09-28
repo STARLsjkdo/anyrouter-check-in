@@ -59,6 +59,8 @@ jobs:
           ${{ runner.os }}-cloakbrowser-
 
     - name: 安装 CloakBrowser
+      env:
+        CLOAKBROWSER_AUTO_UPDATE: "false"
       run: |
         uv run python -m cloakbrowser install
         echo "✅ CloakBrowser 安装完成"
