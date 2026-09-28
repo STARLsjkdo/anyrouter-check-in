@@ -291,13 +291,15 @@ PROVIDERS={"agentrouter":{"use_proxy":true}}
 
 脚本支持多种通知方式，可以通过配置以下环境变量开启，如果 `webhook` 有要求安全设置，例如钉钉，可以在新建机器人时选择自定义关键词，填写 `AnyRouter`。
 
-### 邮箱通知(STMP)
+### 邮箱通知(SMTP)
 
-- `EMAIL_USER`: 发件人邮箱地址/STMP 登录地址
+- `EMAIL_USER`: 发件人邮箱地址/SMTP 登录地址
 - `EMAIL_PASS`: 发件人邮箱密码/授权码
 - `EMAIL_SENDER`: 邮件显示的发件人地址(可选，默认: EMAIL_USER)
 - `CUSTOM_SMTP_SERVER`: 自定义发件人 SMTP 服务器(可选)
 - `EMAIL_TO`: 收件人邮箱地址
+
+配置 `EMAIL_USER`、`EMAIL_PASS` 和 `EMAIL_TO` 后，每次签到脚本运行结束都会尝试发送邮件，包含本次签到结果。其他通知方式仍只在首次运行、余额变化或签到失败时推送。QQ 邮箱作为发件人时，`EMAIL_PASS` 应填写 QQ 邮箱的 SMTP 授权码。
 
 ### 钉钉机器人
 

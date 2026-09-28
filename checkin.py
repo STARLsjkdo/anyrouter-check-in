@@ -631,9 +631,30 @@ async def main():
 
 		print(notify_content)
 		notify.push_message('AnyRouter Check-in Alert', notify_content, msg_type='text')
-		print('[NOTIFY] Notification sent due to failures or balance changes')
+		print('[NOTIFY] Notification attempts completed due to failures or balance changes')
 	else:
-		print('[INFO] All accounts successful and no balance changes detected, notification skipped')
+		print('[INFO] All accounts successful and no balance changes detected; sending email report')
+		account_results = []
+		for i, account in enumerate(accounts):
+			account_key = f'account_{i + 1}'
+			if account_key in account_check_in_details:
+				account_results.append(format_check_in_notification(account_check_in_details[account_key]))
+			else:
+				account_results.append(f'[SUCCESS] {account.get_display_name(i)}')
+
+		summary = [
+			'[STATS] Check-in result statistics:',
+			f'[SUCCESS] Success: {success_count}/{total_count}',
+			f'[FAIL] Failed: {total_count - success_count}/{total_count}',
+			'[SUCCESS] All accounts check-in successful!',
+		]
+		time_info = f'[TIME] Execution time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+		email_content = '\n\n'.join([time_info, '\n'.join(account_results), '\n'.join(summary)])
+		try:
+			notify.send_email('AnyRouter Check-in Alert', email_content, msg_type='text')
+			print('[Email]: Message push successful!')
+		except Exception as e:
+			print(f'[Email]: Message push failed! Reason: {e}')
 
 	sys.exit(0 if success_count > 0 else 1)
 
