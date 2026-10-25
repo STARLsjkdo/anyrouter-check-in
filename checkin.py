@@ -238,9 +238,23 @@ def get_user_info(client, headers, user_info_url: str):
 	"""获取用户信息"""
 	try:
 		response = client.get(user_info_url, headers=headers, timeout=30)
+		try:
+			data = response.json()
+		except ValueError:
+			if user_info_url == 'https://agentrouter.org/api/user/self':
+				print('[INFO] AgentRouter: Primary endpoint returned non-JSON; trying the official backup domain')
+				backup_headers = {
+					**headers,
+					'Origin': 'https://ps.air-outer.com',
+					'Referer': 'https://ps.air-outer.com',
+				}
+				return get_user_info(client, backup_headers, 'https://ps.air-outer.com/api/user/self')
+			return {
+				'success': False,
+				'error': f'Failed to get user info: HTTP {response.status_code}, non-JSON response',
+			}
 
 		if response.status_code == 200:
-			data = response.json()
 			if data.get('success'):
 				user_data = data.get('data', {})
 				quota = round(user_data.get('quota', 0) / 500000, 2)
