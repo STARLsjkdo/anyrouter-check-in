@@ -149,11 +149,12 @@ async def login_with_credentials(
 	"""使用邮箱密码通过浏览器登录，返回 cookies 与拦截到的 api user id。"""
 	print(f'[PROCESSING] {account_name}: Logging in with email/password...')
 
+	requires_login_check_in = agentrouter_requires_login_check_in(provider_config, provider_name)
 	login_url = f'{provider_config.domain}{provider_config.login_path}'
 	settings = load_browser_login_settings(
 		account_name,
 		provider_name,
-		persist_profile=provider_config.persist_profile,
+		persist_profile=provider_config.persist_profile if not requires_login_check_in else False,
 	)
 	timeout_ms = settings.wait_timeout_ms
 
@@ -186,18 +187,44 @@ async def login_with_credentials(
 			account_name=account_name,
 		)
 
+		login_checked_in = None
 		if not await is_logged_in(page):
 			if await has_session_cookie(page):
 				print(f'[WARN] {account_name}: Stale session cookie on login page, forcing email login')
 			await save_login_screenshot(page, provider_name, account_name, 'before-email-login')
-			await login_with_email_form(
-				page,
-				email,
-				password,
-				timeout_ms,
-				provider=provider_name,
-				account_name=account_name,
-			)
+			if requires_login_check_in:
+				login_api_url = f'{provider_config.domain.rstrip("/")}/api/user/login'
+				async with page.expect_response(
+					lambda response: response.url.split('?', 1)[0] == login_api_url
+					and response.request.method == 'POST',
+					timeout=timeout_ms,
+				) as response_info:
+					await login_with_email_form(
+						page,
+						email,
+						password,
+						timeout_ms,
+						provider=provider_name,
+						account_name=account_name,
+					)
+				login_checked_in = await parse_agentrouter_login_check_in(await response_info.value)
+				if login_checked_in is None:
+					print(f'[FAILED] {account_name}: Login response did not verify daily credit status')
+					await context.close()
+					return None
+			else:
+				await login_with_email_form(
+					page,
+					email,
+					password,
+					timeout_ms,
+					provider=provider_name,
+					account_name=account_name,
+				)
+		elif requires_login_check_in:
+			print(f'[FAILED] {account_name}: A fresh login response is required to verify daily credit')
+			await context.close()
+			return None
 		else:
 			print(f'[INFO] {account_name}: Browser profile already logged in')
 
@@ -224,7 +251,7 @@ async def login_with_credentials(
 			success_msg += f', api_user={api_user}'
 		print(success_msg)
 		await context.close()
-		return BrowserLoginResult(cookies=all_cookies, api_user=api_user)
+		return BrowserLoginResult(cookies=all_cookies, api_user=api_user, login_checked_in=login_checked_in)
 
 	except Exception as e:
 		print(f'[FAILED] {account_name}: Error during login: {e}')
@@ -232,6 +259,29 @@ async def login_with_credentials(
 			await save_login_screenshot(page, provider_name, account_name, 'login-error')
 		await context.close()
 		return None
+
+
+def agentrouter_requires_login_check_in(provider_config, provider_name: str) -> bool:
+	return (
+		provider_name == 'agentrouter' or provider_config.name == 'agentrouter'
+	) and not provider_config.needs_manual_check_in()
+
+
+async def parse_agentrouter_login_check_in(response) -> bool | None:
+	"""只接受登录接口明确返回的领取结果，不从余额查询推断签到。"""
+	if response.status != 200:
+		return None
+	try:
+		payload = await response.json()
+	except Exception:  # nosec B110
+		return None
+	if not isinstance(payload, dict) or payload.get('success') is not True:
+		return None
+	data = payload.get('data')
+	if not isinstance(data, dict):
+		return None
+	checked_in = data.get('checked_in')
+	return checked_in if isinstance(checked_in, bool) else None
 
 
 def get_user_info(client, headers, user_info_url: str):
@@ -375,10 +425,19 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 		return False, None, None
 
 	print(f'[INFO] {account_name}: Using provider "{account.provider}" ({provider_config.domain})')
+	requires_login_check_in = agentrouter_requires_login_check_in(provider_config, account.provider)
+	if requires_login_check_in and not account.has_login_credentials():
+		error = (
+			'AgentRouter requires a fresh username/password login to claim daily credit; '
+			'session cookies and profile queries cannot confirm a claim. Configure email (username) and password.'
+		)
+		print(f'[FAILED] {account_name}: {error}')
+		return False, None, {'success': False, 'error': error}
 
 	# 邮箱密码优先
 	all_cookies = None
 	resolved_api_user: str | None = None
+	login_checked_in = None
 	auth_method = None
 	if account.has_login_credentials():
 		print(f'[INFO] {account_name}: Attempting email/password login (priority)...')
@@ -393,9 +452,16 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 		if login_result:
 			all_cookies = login_result.cookies
 			resolved_api_user = login_result.api_user
+			login_checked_in = login_result.login_checked_in
 			auth_method = 'email/password'
 		else:
 			print(f'[FAILED] {account_name}: Email/password login failed, will not use stale session cookies')
+			if requires_login_check_in:
+				return (
+					False,
+					None,
+					{'success': False, 'error': 'Fresh AgentRouter login and daily credit status not verified'},
+				)
 			return False, None, None
 	else:
 		user_cookies = parse_cookies(account.cookies)
@@ -417,6 +483,7 @@ async def check_in_account(account: AccountConfig, account_index: int, app_confi
 		provider_config,
 		api_user_override=resolved_api_user,
 		use_proxy=provider_config.use_proxy,
+		login_checked_in=login_checked_in,
 	)
 
 
@@ -428,8 +495,12 @@ def run_check_in_requests(
 	*,
 	api_user_override: str | None = None,
 	use_proxy: bool = False,
+	login_checked_in: bool | None = None,
 ) -> tuple[bool, dict | None, dict | None]:
 	"""执行 HTTP 签到请求（同步，避免在 async 上下文中使用阻塞 httpx）。"""
+	requires_login_check_in = agentrouter_requires_login_check_in(provider_config, account.provider)
+	if requires_login_check_in and not isinstance(login_checked_in, bool):
+		return False, None, {'success': False, 'error': 'Fresh AgentRouter login did not verify daily credit status'}
 	try:
 		client_kwargs: dict = {'http2': True, 'timeout': 30.0}
 		proxy_url = get_proxy_server(use_proxy=use_proxy)
@@ -463,6 +534,15 @@ def run_check_in_requests(
 				headers[provider_config.api_user_key] = api_user
 
 			user_info_url = f'{provider_config.domain}{provider_config.user_info_path}'
+			if requires_login_check_in:
+				user_info_after = get_user_info(client, headers, user_info_url)
+				if login_checked_in is True:
+					print(f'[SUCCESS] {account_name}: Login response confirmed daily credit was granted')
+					return True, None, user_info_after
+				error = 'Login succeeded but no daily credit reported (checked_in=false); daily claim unconfirmed'
+				print(f'[FAILED] {account_name}: {error}')
+				return False, None, {**(user_info_after or {}), 'success': False, 'error': error}
+
 			user_info_before = get_user_info(client, headers, user_info_url)
 			if user_info_before and user_info_before.get('success'):
 				print(user_info_before['display'])

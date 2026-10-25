@@ -143,6 +143,7 @@ _OPEN_EMAIL_FORM_JS = """() => {
 class BrowserLoginResult:
 	cookies: dict[str, str]
 	api_user: str | None = None
+	login_checked_in: bool | None = None
 
 
 @dataclass(frozen=True)

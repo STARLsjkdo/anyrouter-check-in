@@ -66,7 +66,7 @@ GitHub Secret 保存后无法查看原值。已有 `ANYROUTER_ACCOUNTS` 时，�
 [
   {
     "name": "AgentRouter",
-    "email": "AgentRouter登录邮箱",
+    "email": "AgentRouter用户名或登录邮箱",
     "password": "AgentRouter站内密码"
   }
 ]
@@ -74,7 +74,11 @@ GitHub Secret 保存后无法查看原值。已有 `ANYROUTER_ACCOUNTS` 时，�
 
 脚本会合并两组账号执行。新 Secret 中省略 `provider` 时默认使用 `agentrouter`；只配置这一组也可以运行。已有账号若已放在原 Secret 中，不必重复添加。
 
-AgentRouter 的每日额度需要重新登录领取，推荐填写其站内邮箱和密码。这里不是 GitHub 密码或 API Key；使用第三方登录的账号，需先在 AgentRouter 设置站内密码。保存后手动运行一次工作流，并核对站内余额是否到账。
+AgentRouter 的每日额度在重新登录时领取，需填写其站内用户名（或登录邮箱）和密码；`email` 字段也接受用户名。这里填写的是 AgentRouter 站内密码。仅提供 Cookie 不能完成每日领取，脚本会提示需要重新登录。
+
+使用 GitHub / LINUX DO 登录、没有站内密码的账号，可先确认或绑定能收信的邮箱，再从 [忘记密码页面](https://agentrouter.org/reset) 按邮件提示重置；此流程不需要原密码。完成后把用户名和新站内密码保存到 `AGENTROUTER_ACCOUNTS`，不要提交到代码中。
+
+脚本核对登录响应中的 `checked_in`：只有明确返回 `true` 才报告本次领取成功。返回 `false` 或缺少该字段时，提示本次领取未确认，可能已领取过，需核对站内余额。登录发生在余额查询之前，因此不使用登录后的两次余额查询计算本次奖励。GitHub 运行环境还需能正常访问站点；若遇到验证页面，可配置下文的代理。
 
 ### 4. 多账号配置格式
 
@@ -280,7 +284,7 @@ AgentRouter 的每日额度需要重新登录领取，推荐填写其站内邮�
   - `sign_in_path: "/api/user/sign_in"`
 - `agentrouter`：
   - `bypass_method: "waf_cookies"`（需要获取 `acw_tc`）
-  - `sign_in_path: null`（查询用户信息时自动签到）
+  - `sign_in_path: null`（重新登录时领取额度，核对登录响应的 `checked_in`）
   - `use_proxy: true`
 
 **重要提示**：
