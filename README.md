@@ -58,6 +58,24 @@
    - Name: `ANYROUTER_ACCOUNTS`
    - Value: 你的多账号配置数据
 
+#### 已配置旧 Secret，单独添加 AgentRouter
+
+GitHub Secret 保存后无法查看原值。已有 `ANYROUTER_ACCOUNTS` 时，可保留它，在同一个 `production` 环境中新增 `AGENTROUTER_ACCOUNTS`，填写：
+
+```json
+[
+  {
+    "name": "AgentRouter",
+    "email": "AgentRouter登录邮箱",
+    "password": "AgentRouter站内密码"
+  }
+]
+```
+
+脚本会合并两组账号执行。新 Secret 中省略 `provider` 时默认使用 `agentrouter`；只配置这一组也可以运行。已有账号若已放在原 Secret 中，不必重复添加。
+
+AgentRouter 的每日额度需要重新登录领取，推荐填写其站内邮箱和密码。这里不是 GitHub 密码或 API Key；使用第三方登录的账号，需先在 AgentRouter 设置站内密码。保存后手动运行一次工作流，并核对站内余额是否到账。
+
 ### 4. 多账号配置格式
 
 支持单个与多个账号配置，可选 `name` 和 `provider` 字段：

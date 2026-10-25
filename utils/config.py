@@ -181,24 +181,37 @@ class AccountConfig:
 
 
 def load_accounts_config() -> list[AccountConfig] | None:
-	"""从环境变量加载账号配置"""
-	accounts_str = os.getenv('ANYROUTER_ACCOUNTS')
-	if not accounts_str:
-		print('ERROR: ANYROUTER_ACCOUNTS environment variable not found')
-		return None
-
-	try:
-		accounts_data = json.loads(accounts_str)
-	except json.JSONDecodeError as e:
-		print(f'ERROR: ANYROUTER_ACCOUNTS JSON 解析失败: {e}')
-		print('HINT: 常见原因 - 末尾多余逗号、使用了单引号、包含注释、或换行格式问题')
-		return None
-
-	try:
-		if not isinstance(accounts_data, list):
-			print('ERROR: Account configuration must use array format [{}]')
+	"""合并独立 Secret 中的账号配置，兼容原有的多平台配置。"""
+	accounts_data = []
+	has_config = False
+	for env_name, default_provider in (
+		('ANYROUTER_ACCOUNTS', 'anyrouter'),
+		('AGENTROUTER_ACCOUNTS', 'agentrouter'),
+	):
+		accounts_str = os.getenv(env_name)
+		if not accounts_str:
+			continue
+		has_config = True
+		try:
+			account_group = json.loads(accounts_str)
+		except json.JSONDecodeError as e:
+			print(f'ERROR: {env_name} JSON 解析失败: {e}')
+			print('HINT: 常见原因 - 末尾多余逗号、使用了单引号、包含注释、或换行格式问题')
 			return None
+		if not isinstance(account_group, list):
+			print(f'ERROR: {env_name} must use array format [{{}}]')
+			return None
+		for i, account_dict in enumerate(account_group):
+			if not isinstance(account_dict, dict):
+				print(f'ERROR: {env_name} account {i + 1} configuration format is incorrect')
+				return None
+			accounts_data.append({'provider': default_provider, **account_dict})
 
+	if not has_config:
+		print('ERROR: Set ANYROUTER_ACCOUNTS or AGENTROUTER_ACCOUNTS')
+		return None
+
+	try:
 		accounts = []
 		for i, account_dict in enumerate(accounts_data):
 			if not isinstance(account_dict, dict):
