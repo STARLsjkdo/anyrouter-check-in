@@ -288,6 +288,16 @@ def get_user_info(client, headers, user_info_url: str):
 	"""获取用户信息"""
 	try:
 		response = client.get(user_info_url, headers=headers, timeout=30)
+		if response.status_code == 401:
+			return {
+				'success': False,
+				'status_code': 401,
+				'error': (
+					'Authentication rejected (HTTP 401): session may have expired or api_user may not match. '
+					'Confirm the account can log in, then refresh session and matching api_user in the production '
+					'Secret, or configure username/email and site password. Do not commit credentials to code.'
+				),
+			}
 		try:
 			data = response.json()
 		except ValueError:
@@ -550,6 +560,8 @@ def run_check_in_requests(
 				print(user_info_before.get('error', 'Unknown error'))
 
 			if provider_config.needs_manual_check_in():
+				if user_info_before and user_info_before.get('status_code') == 401:
+					return False, user_info_before, user_info_before
 				success = execute_check_in(client, account_name, provider_config, headers)
 				user_info_after = get_user_info(client, headers, user_info_url)
 				return success, user_info_before, user_info_after

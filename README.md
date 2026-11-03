@@ -151,7 +151,7 @@ AgentRouter 的每日额度在重新登录时领取，需填写其站内用户�
 - 请确保每个账号的 cookies 和 API User 都是正确的
 - 可以在 Actions 页面查看详细的运行日志
 - 支持部分账号失败，只要有账号成功签到，整个任务就不会失败
-- 报 401 错误，请重新获取 cookies，理论 1 个月失效，但有 Bug，详见 [#6](https://github.com/millylee/anyrouter-check-in/issues/6)
+- 报 HTTP 401 表示当前登录凭据被拒绝，脚本会停止该账号后续的签到请求。先确认网站上能否正常登录：若账号被封，需通过站方申诉恢复或换成可用账号；若仍可登录，在 `production` 环境更新对应 Secret 中的 session 和匹配的 `api_user`，也可改用站内用户名/邮箱和密码自动登录。不要把凭据提交到代码中，单纯重跑不能修复失效凭据。
 - 请求 200，但出现 Error 1040（08004）：Too many connections，官方数据库问题，目前已修复，但遇到几次了，详见 [#7](https://github.com/millylee/anyrouter-check-in/issues/7)
 
 ## 配置示例
